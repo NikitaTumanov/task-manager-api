@@ -31,6 +31,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*taskdomain.Ta
 		Title:       normalized.Title,
 		Description: normalized.Description,
 		Status:      normalized.Status,
+		Deadline:    normalized.Deadline,
 	}
 	now := s.now()
 	model.CreatedAt = now
@@ -67,6 +68,7 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*tas
 		Title:       normalized.Title,
 		Description: normalized.Description,
 		Status:      normalized.Status,
+		Deadline:    normalized.Deadline,
 		UpdatedAt:   s.now(),
 	}
 
@@ -104,6 +106,10 @@ func validateCreateInput(input CreateInput) (CreateInput, error) {
 
 	if !input.Status.Valid() {
 		return CreateInput{}, fmt.Errorf("%w: invalid status", ErrInvalidInput)
+	}
+
+	if input.Deadline.IsZero() {
+		return CreateInput{}, fmt.Errorf("%w: deadline is required", ErrInvalidInput)
 	}
 
 	return input, nil
