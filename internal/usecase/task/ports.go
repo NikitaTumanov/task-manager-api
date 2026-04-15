@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"example.com/taskservice/internal/domain/instruction"
+	instructiondomain "example.com/taskservice/internal/domain/instruction"
 	taskdomain "example.com/taskservice/internal/domain/task"
 )
 
@@ -15,6 +17,13 @@ type Repository interface {
 	List(ctx context.Context) ([]taskdomain.Task, error)
 }
 
+type InstructionRepository interface {
+	Create(ctx context.Context, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error)
+	GetByTaskID(ctx context.Context, id int64) (*instructiondomain.Instruction, error)
+	//Update(ctx context.Context, id int64, input UpdateInput) (*taskdomain.Task, error)
+	Delete(ctx context.Context, id int64) error
+}
+
 type Usecase interface {
 	Create(ctx context.Context, input CreateInput) (*taskdomain.Task, error)
 	GetByID(ctx context.Context, id int64) (*taskdomain.Task, error)
@@ -24,10 +33,13 @@ type Usecase interface {
 }
 
 type CreateInput struct {
-	Title       string
-	Description string
-	Status      taskdomain.Status
-	Deadline    time.Time
+	Title         string
+	Description   string
+	Status        taskdomain.Status
+	Deadline      time.Time
+	Scenario      instruction.Scenario
+	ScenarioValue int
+	SpecificDates []time.Time
 }
 
 type UpdateInput struct {

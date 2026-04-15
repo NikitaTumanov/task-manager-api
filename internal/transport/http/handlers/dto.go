@@ -3,14 +3,18 @@ package handlers
 import (
 	"time"
 
+	"example.com/taskservice/internal/domain/instruction"
 	taskdomain "example.com/taskservice/internal/domain/task"
 )
 
 type taskMutationDTO struct {
-	Title       string            `json:"title"`
-	Description string            `json:"description"`
-	Status      taskdomain.Status `json:"status"`
-	Deadline    time.Time         `json:"deadline"`
+	Title         string               `json:"title"`
+	Description   string               `json:"description"`
+	Status        taskdomain.Status    `json:"status"`
+	Deadline      time.Time            `json:"deadline"`
+	Scenario      instruction.Scenario `json:"scenario"`
+	ScenarioValue int                  `json:"scenario_value"`
+	SpecificDates []time.Time          `json:"specific_dates"`
 }
 
 type taskDTO struct {

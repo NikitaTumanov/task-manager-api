@@ -6,18 +6,22 @@ import (
 	"strings"
 	"time"
 
+	"example.com/taskservice/internal/domain/instruction"
+	instructiondomain "example.com/taskservice/internal/domain/instruction"
 	taskdomain "example.com/taskservice/internal/domain/task"
 )
 
 type Service struct {
-	repo Repository
-	now  func() time.Time
+	repo            Repository
+	instructionRepo InstructionRepository
+	now             func() time.Time
 }
 
-func NewService(repo Repository) *Service {
+func NewService(repo Repository, instructionRepo InstructionRepository) *Service {
 	return &Service{
-		repo: repo,
-		now:  func() time.Time { return time.Now().UTC() },
+		repo:            repo,
+		instructionRepo: instructionRepo,
+		now:             func() time.Time { return time.Now().UTC() },
 	}
 }
 
@@ -40,6 +44,28 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*taskdomain.Ta
 	created, err := s.repo.Create(ctx, model)
 	if err != nil {
 		return nil, err
+	}
+
+	//TODO отдельно обработку для ScenarioSpecificDates
+	if normalized.Scenario != instruction.ScenarioZero && normalized.Scenario != instruction.ScenarioSpecificDates {
+		nextTaskDate := calculateNextDate(normalized.Deadline, normalized.Scenario, normalized.ScenarioValue)
+
+		model.Deadline = nextTaskDate
+		//TODO добавить обработку не созданной задачи
+		nextTask, _ := s.repo.Create(ctx, model)
+
+		instructionModel := &instructiondomain.Instruction{
+			Scenario:      normalized.Scenario,
+			ScenarioValue: normalized.ScenarioValue,
+			NextTaskDate:  nextTaskDate,
+			CreatedAt:     now,
+			UpdatedAt:     now,
+			TaskID:        nextTask.ID,
+		}
+
+		//TODO добавить обработку не созданной инструкции
+		_, err = s.instructionRepo.Create(ctx, instructionModel)
+
 	}
 
 	return created, nil
@@ -112,6 +138,27 @@ func validateCreateInput(input CreateInput) (CreateInput, error) {
 		return CreateInput{}, fmt.Errorf("%w: deadline is required", ErrInvalidInput)
 	}
 
+	switch input.Scenario {
+	case instruction.ScenarioDaily:
+		if input.ScenarioValue <= 0 {
+			return CreateInput{}, fmt.Errorf("%w: scenario value is required (value > 0)", ErrInvalidInput)
+		}
+
+	case instruction.ScenarioMonthly:
+		if input.ScenarioValue <= 0 || input.ScenarioValue > 31 {
+			return CreateInput{}, fmt.Errorf("%w: scenario value is required (0 < value <= 31)", ErrInvalidInput)
+		}
+
+	case instruction.ScenarioSpecificDates:
+		if len(input.SpecificDates) == 0 {
+			return CreateInput{}, fmt.Errorf("%w: specific dates is required", ErrInvalidInput)
+		}
+	}
+
+	if !input.Scenario.Valid() {
+		return CreateInput{}, fmt.Errorf("%w: invalid scenario", ErrInvalidInput)
+	}
+
 	return input, nil
 }
 
@@ -128,4 +175,43 @@ func validateUpdateInput(input UpdateInput) (UpdateInput, error) {
 	}
 
 	return input, nil
+}
+
+func calculateNextDate(date time.Time, scenario instruction.Scenario, value int) time.Time {
+	switch scenario {
+	case instruction.ScenarioDaily:
+		return date.AddDate(0, 0, value)
+
+	case instruction.ScenarioMonthly:
+		if date.Day() < value {
+			return normalizeDate(date.Year(), date.Month(), value, date)
+		}
+		return normalizeDate(date.Year(), date.Month()+1, value, date)
+
+	case instruction.ScenarioEven:
+		nextDay := date.AddDate(0, 0, 1)
+		for nextDay.Day()%2 != 0 {
+			nextDay = nextDay.AddDate(0, 0, 1)
+		}
+		return nextDay
+
+	case instruction.ScenarioOdd:
+		nextDay := date.AddDate(0, 0, 1)
+		for nextDay.Day()%2 == 0 {
+			nextDay = nextDay.AddDate(0, 0, 1)
+		}
+		return nextDay
+	}
+
+	return time.Time{}
+}
+
+func normalizeDate(year int, month time.Month, day int, t time.Time) time.Time {
+	lastDay := time.Date(year, month+1, 0, 0, 0, 0, 0, t.Location()).Day()
+
+	if day > lastDay {
+		day = lastDay
+	}
+
+	return time.Date(year, month, day, t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
 }
