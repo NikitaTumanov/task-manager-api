@@ -9,6 +9,7 @@ import (
 	"example.com/taskservice/internal/domain/instruction"
 	instructiondomain "example.com/taskservice/internal/domain/instruction"
 	taskdomain "example.com/taskservice/internal/domain/task"
+	"example.com/taskservice/internal/scheduler"
 )
 
 type Service struct {
@@ -48,9 +49,10 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*taskdomain.Ta
 
 	//TODO отдельно обработку для ScenarioSpecificDates
 	if normalized.Scenario != instruction.ScenarioZero && normalized.Scenario != instruction.ScenarioSpecificDates {
-		nextTaskDate := calculateNextDate(normalized.Deadline, normalized.Scenario, normalized.ScenarioValue)
+		nextTaskDate := scheduler.CalculateNextDate(normalized.Deadline, normalized.Scenario, normalized.ScenarioValue)
 
 		model.Deadline = nextTaskDate
+		model.Status = taskdomain.StatusNew
 		//TODO добавить обработку не созданной задачи
 		nextTask, _ := s.repo.Create(ctx, model)
 
@@ -138,6 +140,10 @@ func validateCreateInput(input CreateInput) (CreateInput, error) {
 		return CreateInput{}, fmt.Errorf("%w: deadline is required", ErrInvalidInput)
 	}
 
+	if !input.Scenario.Valid() {
+		return CreateInput{}, fmt.Errorf("%w: invalid scenario", ErrInvalidInput)
+	}
+
 	switch input.Scenario {
 	case instruction.ScenarioDaily:
 		if input.ScenarioValue <= 0 {
@@ -153,10 +159,6 @@ func validateCreateInput(input CreateInput) (CreateInput, error) {
 		if len(input.SpecificDates) == 0 {
 			return CreateInput{}, fmt.Errorf("%w: specific dates is required", ErrInvalidInput)
 		}
-	}
-
-	if !input.Scenario.Valid() {
-		return CreateInput{}, fmt.Errorf("%w: invalid scenario", ErrInvalidInput)
 	}
 
 	return input, nil
@@ -175,43 +177,4 @@ func validateUpdateInput(input UpdateInput) (UpdateInput, error) {
 	}
 
 	return input, nil
-}
-
-func calculateNextDate(date time.Time, scenario instruction.Scenario, value int) time.Time {
-	switch scenario {
-	case instruction.ScenarioDaily:
-		return date.AddDate(0, 0, value)
-
-	case instruction.ScenarioMonthly:
-		if date.Day() < value {
-			return normalizeDate(date.Year(), date.Month(), value, date)
-		}
-		return normalizeDate(date.Year(), date.Month()+1, value, date)
-
-	case instruction.ScenarioEven:
-		nextDay := date.AddDate(0, 0, 1)
-		for nextDay.Day()%2 != 0 {
-			nextDay = nextDay.AddDate(0, 0, 1)
-		}
-		return nextDay
-
-	case instruction.ScenarioOdd:
-		nextDay := date.AddDate(0, 0, 1)
-		for nextDay.Day()%2 == 0 {
-			nextDay = nextDay.AddDate(0, 0, 1)
-		}
-		return nextDay
-	}
-
-	return time.Time{}
-}
-
-func normalizeDate(year int, month time.Month, day int, t time.Time) time.Time {
-	lastDay := time.Date(year, month+1, 0, 0, 0, 0, 0, t.Location()).Day()
-
-	if day > lastDay {
-		day = lastDay
-	}
-
-	return time.Date(year, month, day, t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
 }

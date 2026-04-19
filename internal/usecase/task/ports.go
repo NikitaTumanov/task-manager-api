@@ -19,9 +19,6 @@ type Repository interface {
 
 type InstructionRepository interface {
 	Create(ctx context.Context, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error)
-	GetByTaskID(ctx context.Context, id int64) (*instructiondomain.Instruction, error)
-	//Update(ctx context.Context, id int64, input UpdateInput) (*taskdomain.Task, error)
-	Delete(ctx context.Context, id int64) error
 }
 
 type Usecase interface {

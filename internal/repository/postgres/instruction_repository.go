@@ -33,6 +33,26 @@ func (r *InstructionRepository) Create(ctx context.Context, instruction *instruc
 	return created, nil
 }
 
+func (r *InstructionRepository) GetByID(ctx context.Context, id int64) (*instructiondomain.Instruction, error) {
+	const query = `
+		SELECT id, scenario, scenario_value, next_task_date, created_at, updated_at, task_id
+		FROM instructions
+		WHERE id = $1
+	`
+
+	row := r.pool.QueryRow(ctx, query, id)
+	found, err := scanInstruction(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, instructiondomain.ErrNotFound
+		}
+
+		return nil, err
+	}
+
+	return found, nil
+}
+
 func (r *InstructionRepository) GetByTaskID(ctx context.Context, id int64) (*instructiondomain.Instruction, error) {
 	const query = `
 		SELECT id, scenario, scenario_value, next_task_date, created_at, updated_at, task_id
@@ -53,6 +73,33 @@ func (r *InstructionRepository) GetByTaskID(ctx context.Context, id int64) (*ins
 	return found, nil
 }
 
+func (r *InstructionRepository) Update(ctx context.Context, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error) {
+	var row pgx.Row
+
+	const query = `
+		UPDATE instructions
+		SET scenario = $1,
+		    scenario_value = $2,
+		    next_task_date = $3,
+			updated_at = $4,
+			task_id = $5
+		WHERE id = $6
+		RETURNING id, scenario, scenario_value, next_task_date, created_at, updated_at, task_id
+	`
+	row = r.pool.QueryRow(ctx, query, instruction.Scenario, instruction.ScenarioValue, instruction.NextTaskDate, instruction.UpdatedAt, instruction.TaskID, instruction.ID)
+
+	updated, err := scanInstruction(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, instructiondomain.ErrNotFound
+		}
+
+		return nil, err
+	}
+
+	return updated, nil
+}
+
 func (r *InstructionRepository) Delete(ctx context.Context, id int64) error {
 	const query = `DELETE FROM instructions WHERE id = $1`
 
@@ -66,6 +113,35 @@ func (r *InstructionRepository) Delete(ctx context.Context, id int64) error {
 	}
 
 	return nil
+}
+
+func (r *InstructionRepository) List(ctx context.Context) ([]instructiondomain.Instruction, error) {
+	const query = `
+		SELECT id, scenario, scenario_value, next_task_date, created_at, updated_at, task_id
+		FROM instructions
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	instructions := make([]instructiondomain.Instruction, 0)
+	for rows.Next() {
+		instruction, err := scanInstruction(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		instructions = append(instructions, *instruction)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return instructions, nil
 }
 
 type instructionScanner interface {
