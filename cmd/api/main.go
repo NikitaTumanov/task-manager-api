@@ -15,6 +15,7 @@ import (
 	transporthttp "example.com/taskservice/internal/transport/http"
 	swaggerdocs "example.com/taskservice/internal/transport/http/docs"
 	httphandlers "example.com/taskservice/internal/transport/http/handlers"
+	"example.com/taskservice/internal/usecase/instruction"
 	"example.com/taskservice/internal/usecase/task"
 )
 
@@ -37,10 +38,15 @@ func main() {
 
 	taskRepo := postgresrepo.New(pool)
 	instructionRepo := postgresrepo.NewInstructionRepository(pool)
+
 	taskUsecase := task.NewService(taskRepo, instructionRepo)
+	instructionUsecase := instruction.NewService(instructionRepo, taskRepo)
+
 	taskHandler := httphandlers.NewTaskHandler(taskUsecase)
+	instructionHandler := httphandlers.NewInstructionHandler(instructionUsecase)
 	docsHandler := swaggerdocs.NewHandler()
-	router := transporthttp.NewRouter(taskHandler, docsHandler)
+
+	router := transporthttp.NewRouter(taskHandler, instructionHandler, docsHandler)
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,

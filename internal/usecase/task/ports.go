@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"example.com/taskservice/internal/domain/instruction"
 	instructiondomain "example.com/taskservice/internal/domain/instruction"
 	taskdomain "example.com/taskservice/internal/domain/task"
 )
@@ -34,7 +33,7 @@ type CreateInput struct {
 	Description   string
 	Status        taskdomain.Status
 	Deadline      time.Time
-	Scenario      instruction.Scenario
+	Scenario      instructiondomain.Scenario
 	ScenarioValue int
 	SpecificDates []time.Time
 }

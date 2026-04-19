@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"example.com/taskservice/internal/domain/instruction"
+	instructiondomain "example.com/taskservice/internal/domain/instruction"
 	taskdomain "example.com/taskservice/internal/domain/task"
 	"example.com/taskservice/internal/scheduler"
 )
@@ -24,7 +24,7 @@ func NewService(repo Repository, taskRepo TaskRepository) *Service {
 	}
 }
 
-func (s *Service) Create(ctx context.Context, input CreateInput) (*instruction.Instruction, error) {
+func (s *Service) Create(ctx context.Context, input CreateInput) (*instructiondomain.Instruction, error) {
 	normalized, err := validateCreateInput(input)
 	if err != nil {
 		return nil, err
@@ -36,8 +36,8 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*instruction.I
 	}
 
 	//TODO отдельно обработку для ScenarioSpecificDates
-	var created *instruction.Instruction
-	if normalized.Scenario != instruction.ScenarioZero && normalized.Scenario != instruction.ScenarioSpecificDates {
+	var created *instructiondomain.Instruction
+	if normalized.Scenario != instructiondomain.ScenarioZero && normalized.Scenario != instructiondomain.ScenarioSpecificDates {
 		_, err = s.repo.GetByTaskID(ctx, normalized.TaskID)
 		if err == nil {
 			return nil, fmt.Errorf("%w: instruction for task id %d already exists", ErrInvalidInput, normalized.TaskID)
@@ -47,9 +47,12 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*instruction.I
 
 		task.Deadline = nextTaskDate
 		task.Status = taskdomain.StatusNew
-		newTask, _ := s.taskRepo.Create(ctx, task)
+		newTask, err := s.taskRepo.Create(ctx, task)
+		if err != nil {
+			return nil, err
+		}
 
-		model := &instruction.Instruction{
+		model := &instructiondomain.Instruction{
 			Scenario:      normalized.Scenario,
 			ScenarioValue: normalized.ScenarioValue,
 			NextTaskDate:  nextTaskDate,
@@ -63,12 +66,26 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*instruction.I
 		if err != nil {
 			return nil, err
 		}
+	} else if normalized.Scenario == instructiondomain.ScenarioSpecificDates {
+		for _, d := range input.SpecificDates {
+			task.Deadline = d
+			task.Status = taskdomain.StatusNew
+			_, err := s.taskRepo.Create(ctx, task)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		created = &instructiondomain.Instruction{
+			CreatedAt: s.now(),
+			UpdatedAt: s.now(),
+		}
 	}
 
 	return created, nil
 }
 
-func (s *Service) GetByID(ctx context.Context, id int64) (*instruction.Instruction, error) {
+func (s *Service) GetByID(ctx context.Context, id int64) (*instructiondomain.Instruction, error) {
 	if id <= 0 {
 		return nil, fmt.Errorf("%w: id must be positive", ErrInvalidInput)
 	}
@@ -76,7 +93,7 @@ func (s *Service) GetByID(ctx context.Context, id int64) (*instruction.Instructi
 	return s.repo.GetByID(ctx, id)
 }
 
-func (s *Service) GetByTaskID(ctx context.Context, id int64) (*instruction.Instruction, error) {
+func (s *Service) GetByTaskID(ctx context.Context, id int64) (*instructiondomain.Instruction, error) {
 	if id <= 0 {
 		return nil, fmt.Errorf("%w: task id must be positive", ErrInvalidInput)
 	}
@@ -84,7 +101,7 @@ func (s *Service) GetByTaskID(ctx context.Context, id int64) (*instruction.Instr
 	return s.repo.GetByTaskID(ctx, id)
 }
 
-func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*instruction.Instruction, error) {
+func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*instructiondomain.Instruction, error) {
 	if id <= 0 {
 		return nil, fmt.Errorf("%w: id must be positive", ErrInvalidInput)
 	}
@@ -94,12 +111,12 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*ins
 		return nil, err
 	}
 
-	task, err := s.taskRepo.GetByID(ctx, id)
+	model, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	model, err := s.repo.GetByTaskID(ctx, id)
+	task, err := s.taskRepo.GetByID(ctx, model.TaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +125,10 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*ins
 
 	task.Deadline = nextTaskDate
 	task.Status = taskdomain.StatusNew
-	newTask, _ := s.taskRepo.Create(ctx, task)
+	newTask, err := s.taskRepo.Create(ctx, task)
+	if err != nil {
+		return nil, err
+	}
 
 	model.Scenario = normalized.Scenario
 	model.ScenarioValue = normalized.ScenarioValue
@@ -134,7 +154,7 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	return s.repo.Delete(ctx, id)
 }
 
-func (s *Service) List(ctx context.Context) ([]instruction.Instruction, error) {
+func (s *Service) List(ctx context.Context) ([]instructiondomain.Instruction, error) {
 	return s.repo.List(ctx)
 }
 
@@ -144,24 +164,24 @@ func validateCreateInput(input CreateInput) (CreateInput, error) {
 	}
 
 	switch input.Scenario {
-	case instruction.ScenarioDaily:
+	case instructiondomain.ScenarioDaily:
 		if input.ScenarioValue <= 0 {
 			return CreateInput{}, fmt.Errorf("%w: scenario value is required (value > 0)", ErrInvalidInput)
 		}
 
-	case instruction.ScenarioMonthly:
+	case instructiondomain.ScenarioMonthly:
 		if input.ScenarioValue <= 0 || input.ScenarioValue > 31 {
 			return CreateInput{}, fmt.Errorf("%w: scenario value is required (0 < value <= 31)", ErrInvalidInput)
 		}
 
-	case instruction.ScenarioSpecificDates:
+	case instructiondomain.ScenarioSpecificDates:
 		if len(input.SpecificDates) == 0 {
 			return CreateInput{}, fmt.Errorf("%w: specific dates is required", ErrInvalidInput)
 		}
 	}
 
 	if input.TaskID <= 0 {
-		return CreateInput{}, fmt.Errorf("%w: id must be positive", ErrInvalidInput)
+		return CreateInput{}, fmt.Errorf("%w: task id must be positive", ErrInvalidInput)
 	}
 
 	now := time.Now().UTC()
@@ -177,17 +197,17 @@ func validateCreateInput(input CreateInput) (CreateInput, error) {
 }
 
 func validateUpdateInput(input UpdateInput) (UpdateInput, error) {
-	if !input.Scenario.Valid() || input.Scenario == instruction.ScenarioSpecificDates {
+	if !input.Scenario.Valid() || input.Scenario == instructiondomain.ScenarioSpecificDates || input.Scenario == instructiondomain.ScenarioZero {
 		return UpdateInput{}, fmt.Errorf("%w: invalid scenario", ErrInvalidInput)
 	}
 
 	switch input.Scenario {
-	case instruction.ScenarioDaily:
+	case instructiondomain.ScenarioDaily:
 		if input.ScenarioValue <= 0 {
 			return UpdateInput{}, fmt.Errorf("%w: scenario value is required (value > 0)", ErrInvalidInput)
 		}
 
-	case instruction.ScenarioMonthly:
+	case instructiondomain.ScenarioMonthly:
 		if input.ScenarioValue <= 0 || input.ScenarioValue > 31 {
 			return UpdateInput{}, fmt.Errorf("%w: scenario value is required (0 < value <= 31)", ErrInvalidInput)
 		}

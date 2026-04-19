@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 
-	instructiondomain "example.com/taskservice/internal/domain/instruction"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	instructiondomain "example.com/taskservice/internal/domain/instruction"
 )
 
 type InstructionRepository struct {
@@ -156,6 +157,7 @@ func scanInstruction(scanner instructionScanner) (*instructiondomain.Instruction
 
 	if err := scanner.Scan(
 		&instruction.ID,
+		&scenario,
 		&instruction.ScenarioValue,
 		&instruction.NextTaskDate,
 		&instruction.CreatedAt,
