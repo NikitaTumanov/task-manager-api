@@ -35,7 +35,6 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*instructiondo
 		return nil, err
 	}
 
-	//TODO отдельно обработку для ScenarioSpecificDates
 	var created *instructiondomain.Instruction
 	if normalized.Scenario != instructiondomain.ScenarioZero && normalized.Scenario != instructiondomain.ScenarioSpecificDates {
 		_, err = s.repo.GetByTaskID(ctx, normalized.TaskID)
@@ -45,8 +44,11 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*instructiondo
 
 		nextTaskDate := scheduler.CalculateNextDate(task.Deadline, input.Scenario, input.ScenarioValue)
 
+		now := s.now()
 		task.Deadline = nextTaskDate
 		task.Status = taskdomain.StatusNew
+		task.UpdatedAt = now
+		task.CreatedAt = now
 		newTask, err := s.taskRepo.Create(ctx, task)
 		if err != nil {
 			return nil, err
@@ -58,7 +60,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*instructiondo
 			NextTaskDate:  nextTaskDate,
 			TaskID:        newTask.ID,
 		}
-		now := s.now()
+
 		model.CreatedAt = now
 		model.UpdatedAt = now
 
@@ -123,8 +125,11 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*ins
 
 	nextTaskDate := scheduler.CalculateNextDate(task.Deadline, input.Scenario, input.ScenarioValue)
 
+	now := s.now()
 	task.Deadline = nextTaskDate
 	task.Status = taskdomain.StatusNew
+	task.CreatedAt = now
+	task.UpdatedAt = now
 	newTask, err := s.taskRepo.Create(ctx, task)
 	if err != nil {
 		return nil, err
@@ -134,8 +139,6 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*ins
 	model.ScenarioValue = normalized.ScenarioValue
 	model.NextTaskDate = nextTaskDate
 	model.TaskID = newTask.ID
-
-	now := s.now()
 	model.UpdatedAt = now
 
 	updated, err := s.repo.Update(ctx, model)

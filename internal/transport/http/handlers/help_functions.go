@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
+	instructiondomain "example.com/taskservice/internal/domain/instruction"
 	taskdomain "example.com/taskservice/internal/domain/task"
+	instructionusecase "example.com/taskservice/internal/usecase/instruction"
 	taskusecase "example.com/taskservice/internal/usecase/task"
 	"github.com/gorilla/mux"
 )
@@ -44,7 +46,11 @@ func writeUsecaseError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, taskdomain.ErrNotFound):
 		writeError(w, http.StatusNotFound, err)
+	case errors.Is(err, instructiondomain.ErrNotFound):
+		writeError(w, http.StatusNotFound, err)
 	case errors.Is(err, taskusecase.ErrInvalidInput):
+		writeError(w, http.StatusBadRequest, err)
+	case errors.Is(err, instructionusecase.ErrInvalidInput):
 		writeError(w, http.StatusBadRequest, err)
 	default:
 		writeError(w, http.StatusInternalServerError, err)

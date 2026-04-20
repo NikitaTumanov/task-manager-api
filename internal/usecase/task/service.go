@@ -11,6 +11,11 @@ import (
 	"example.com/taskservice/internal/scheduler"
 )
 
+var (
+	titleLength       = 150
+	descriptionLength = 2000
+)
+
 type Service struct {
 	repo            Repository
 	instructionRepo InstructionRepository
@@ -139,8 +144,12 @@ func validateCreateInput(input CreateInput) (CreateInput, error) {
 		return CreateInput{}, fmt.Errorf("%w: title is required", ErrInvalidInput)
 	}
 
-	if input.Status == "" {
-		input.Status = taskdomain.StatusNew
+	if len([]rune(input.Title)) > titleLength {
+		return CreateInput{}, fmt.Errorf("%w: title is too long", ErrInvalidInput)
+	}
+
+	if len([]rune(input.Description)) > descriptionLength {
+		return CreateInput{}, fmt.Errorf("%w: description is too long", ErrInvalidInput)
 	}
 
 	if !input.Status.Valid() {
@@ -184,6 +193,14 @@ func validateUpdateInput(input UpdateInput) (UpdateInput, error) {
 
 	if input.Title == "" {
 		return UpdateInput{}, fmt.Errorf("%w: title is required", ErrInvalidInput)
+	}
+
+	if len([]rune(input.Title)) > titleLength {
+		return UpdateInput{}, fmt.Errorf("%w: title is too long", ErrInvalidInput)
+	}
+
+	if len([]rune(input.Description)) > descriptionLength {
+		return UpdateInput{}, fmt.Errorf("%w: description is too long", ErrInvalidInput)
 	}
 
 	if !input.Status.Valid() {
