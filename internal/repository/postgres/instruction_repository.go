@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,14 +19,18 @@ func NewInstructionRepository(pool *pgxpool.Pool) *InstructionRepository {
 	return &InstructionRepository{pool: pool}
 }
 
-func (r *InstructionRepository) Create(ctx context.Context, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error) {
+func (r *InstructionRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	return r.pool.Begin(ctx)
+}
+
+func (r *InstructionRepository) Create(ctx context.Context, tx pgx.Tx, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error) {
 	const query = `
 		INSERT INTO instructions (scenario, scenario_value, next_task_date, created_at, updated_at, task_id)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, scenario, scenario_value, next_task_date, created_at, updated_at, task_id
 	`
 
-	row := r.pool.QueryRow(ctx, query, instruction.Scenario, instruction.ScenarioValue, instruction.NextTaskDate, instruction.CreatedAt, instruction.UpdatedAt, instruction.TaskID)
+	row := tx.QueryRow(ctx, query, instruction.Scenario, instruction.ScenarioValue, instruction.NextTaskDate, instruction.CreatedAt, instruction.UpdatedAt, instruction.TaskID)
 	created, err := scanInstruction(row)
 	if err != nil {
 		return nil, err
@@ -74,7 +79,40 @@ func (r *InstructionRepository) GetByTaskID(ctx context.Context, id int64) (*ins
 	return found, nil
 }
 
-func (r *InstructionRepository) Update(ctx context.Context, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error) {
+func (r *InstructionRepository) ListByNextTaskDate(ctx context.Context, date time.Time) ([]instructiondomain.Instruction, error) {
+	startDate := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
+	endDate := startDate.AddDate(0, 0, 1)
+
+	const query = `
+		SELECT id, scenario, scenario_value, next_task_date, created_at, updated_at, task_id
+		FROM instructions
+		WHERE next_task_date >= $1 AND next_task_date < $2
+	`
+
+	rows, err := r.pool.Query(ctx, query, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	instructions := make([]instructiondomain.Instruction, 0)
+	for rows.Next() {
+		instruction, err := scanInstruction(rows)
+		if err != nil {
+			return nil, err
+		}
+
+		instructions = append(instructions, *instruction)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return instructions, nil
+}
+
+func (r *InstructionRepository) Update(ctx context.Context, tx pgx.Tx, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error) {
 	var row pgx.Row
 
 	const query = `
@@ -87,7 +125,7 @@ func (r *InstructionRepository) Update(ctx context.Context, instruction *instruc
 		WHERE id = $6
 		RETURNING id, scenario, scenario_value, next_task_date, created_at, updated_at, task_id
 	`
-	row = r.pool.QueryRow(ctx, query, instruction.Scenario, instruction.ScenarioValue, instruction.NextTaskDate, instruction.UpdatedAt, instruction.TaskID, instruction.ID)
+	row = tx.QueryRow(ctx, query, instruction.Scenario, instruction.ScenarioValue, instruction.NextTaskDate, instruction.UpdatedAt, instruction.TaskID, instruction.ID)
 
 	updated, err := scanInstruction(row)
 	if err != nil {

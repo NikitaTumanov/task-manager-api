@@ -6,10 +6,12 @@ import (
 
 	instructiondomain "example.com/taskservice/internal/domain/instruction"
 	taskdomain "example.com/taskservice/internal/domain/task"
+	"github.com/jackc/pgx/v5"
 )
 
 type Repository interface {
-	Create(ctx context.Context, task *taskdomain.Task) (*taskdomain.Task, error)
+	BeginTx(ctx context.Context) (pgx.Tx, error)
+	Create(ctx context.Context, tx pgx.Tx, task *taskdomain.Task) (*taskdomain.Task, error)
 	GetByID(ctx context.Context, id int64) (*taskdomain.Task, error)
 	Update(ctx context.Context, task *taskdomain.Task) (*taskdomain.Task, error)
 	Delete(ctx context.Context, id int64) error
@@ -17,7 +19,7 @@ type Repository interface {
 }
 
 type InstructionRepository interface {
-	Create(ctx context.Context, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error)
+	Create(ctx context.Context, tx pgx.Tx, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error)
 }
 
 type Usecase interface {

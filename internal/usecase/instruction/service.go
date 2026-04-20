@@ -30,6 +30,12 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*instructiondo
 		return nil, err
 	}
 
+	tx, err := s.repo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
 	task, err := s.taskRepo.GetByID(ctx, normalized.TaskID)
 	if err != nil {
 		return nil, err
@@ -42,14 +48,14 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*instructiondo
 			return nil, fmt.Errorf("%w: instruction for task id %d already exists", ErrInvalidInput, normalized.TaskID)
 		}
 
-		nextTaskDate := scheduler.CalculateNextDate(task.Deadline, input.Scenario, input.ScenarioValue)
+		nextTaskDate := customscheduler.CalculateNextDate(task.Deadline, input.Scenario, input.ScenarioValue)
 
 		now := s.now()
 		task.Deadline = nextTaskDate
 		task.Status = taskdomain.StatusNew
 		task.UpdatedAt = now
 		task.CreatedAt = now
-		newTask, err := s.taskRepo.Create(ctx, task)
+		newTask, err := s.taskRepo.Create(ctx, tx, task)
 		if err != nil {
 			return nil, err
 		}
@@ -57,14 +63,14 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*instructiondo
 		model := &instructiondomain.Instruction{
 			Scenario:      normalized.Scenario,
 			ScenarioValue: normalized.ScenarioValue,
-			NextTaskDate:  nextTaskDate,
+			NextTaskDate:  newTask.Deadline,
 			TaskID:        newTask.ID,
 		}
 
 		model.CreatedAt = now
 		model.UpdatedAt = now
 
-		created, err = s.repo.Create(ctx, model)
+		created, err = s.repo.Create(ctx, tx, model)
 		if err != nil {
 			return nil, err
 		}
@@ -72,7 +78,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*instructiondo
 		for _, d := range input.SpecificDates {
 			task.Deadline = d
 			task.Status = taskdomain.StatusNew
-			_, err := s.taskRepo.Create(ctx, task)
+			_, err := s.taskRepo.Create(ctx, tx, task)
 			if err != nil {
 				return nil, err
 			}
@@ -82,6 +88,10 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*instructiondo
 			CreatedAt: s.now(),
 			UpdatedAt: s.now(),
 		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
 	}
 
 	return created, nil
@@ -113,6 +123,12 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*ins
 		return nil, err
 	}
 
+	tx, err := s.repo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
 	model, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -123,26 +139,30 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*ins
 		return nil, err
 	}
 
-	nextTaskDate := scheduler.CalculateNextDate(task.Deadline, input.Scenario, input.ScenarioValue)
+	nextTaskDate := customscheduler.CalculateNextDate(task.Deadline, input.Scenario, input.ScenarioValue)
 
 	now := s.now()
 	task.Deadline = nextTaskDate
 	task.Status = taskdomain.StatusNew
 	task.CreatedAt = now
 	task.UpdatedAt = now
-	newTask, err := s.taskRepo.Create(ctx, task)
+	newTask, err := s.taskRepo.Create(ctx, tx, task)
 	if err != nil {
 		return nil, err
 	}
 
 	model.Scenario = normalized.Scenario
 	model.ScenarioValue = normalized.ScenarioValue
-	model.NextTaskDate = nextTaskDate
+	model.NextTaskDate = newTask.Deadline
 	model.TaskID = newTask.ID
 	model.UpdatedAt = now
 
-	updated, err := s.repo.Update(ctx, model)
+	updated, err := s.repo.Update(ctx, tx, model)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 

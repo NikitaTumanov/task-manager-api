@@ -1,46 +1,105 @@
-package scheduler
+package customscheduler
 
 import (
+	"context"
+	"log/slog"
+	"os"
 	"time"
 
-	"example.com/taskservice/internal/domain/instruction"
+	instructiondomain "example.com/taskservice/internal/domain/instruction"
+	taskdomain "example.com/taskservice/internal/domain/task"
+	"github.com/jackc/pgx/v5"
 )
 
-func CalculateNextDate(date time.Time, scenario instruction.Scenario, value int) time.Time {
-	switch scenario {
-	case instruction.ScenarioDaily:
-		return date.AddDate(0, 0, value)
-
-	case instruction.ScenarioMonthly:
-		if date.Day() < value {
-			return normalizeDate(date.Year(), date.Month(), value, date)
-		}
-		return normalizeDate(date.Year(), date.Month()+1, value, date)
-
-	case instruction.ScenarioEven:
-		nextDay := date.AddDate(0, 0, 1)
-		for nextDay.Day()%2 != 0 {
-			nextDay = nextDay.AddDate(0, 0, 1)
-		}
-		return nextDay
-
-	case instruction.ScenarioOdd:
-		nextDay := date.AddDate(0, 0, 1)
-		for nextDay.Day()%2 == 0 {
-			nextDay = nextDay.AddDate(0, 0, 1)
-		}
-		return nextDay
-	}
-
-	return time.Time{}
+type TaskRepository interface {
+	Create(ctx context.Context, tx pgx.Tx, task *taskdomain.Task) (*taskdomain.Task, error)
+	GetByID(ctx context.Context, id int64) (*taskdomain.Task, error)
 }
 
-func normalizeDate(year int, month time.Month, day int, t time.Time) time.Time {
-	lastDay := time.Date(year, month+1, 0, 0, 0, 0, 0, t.Location()).Day()
+type InstructionRepository interface {
+	BeginTx(ctx context.Context) (pgx.Tx, error)
+	ListByNextTaskDate(ctx context.Context, date time.Time) ([]instructiondomain.Instruction, error)
+	Update(ctx context.Context, tx pgx.Tx, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error)
+}
 
-	if day > lastDay {
-		day = lastDay
+type Scheduler struct {
+	taskRepo        TaskRepository
+	instructionRepo InstructionRepository
+	now             func() time.Time
+}
+
+func NewScheduler(taskRepo TaskRepository, instructionRepo InstructionRepository) *Scheduler {
+	return &Scheduler{
+		taskRepo:        taskRepo,
+		instructionRepo: instructionRepo,
+		now:             time.Now,
+	}
+}
+
+func (s *Scheduler) Run(ctx context.Context) error {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+	logger.Info("scheduler started")
+	instructions, err := s.instructionRepo.ListByNextTaskDate(ctx, s.now())
+	if err != nil {
+		return err
 	}
 
-	return time.Date(year, month, day, t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
+	var lastErr error
+	for _, instruction := range instructions {
+		if err := s.processInstruction(ctx, instruction); err != nil {
+			lastErr = err
+			continue
+		}
+	}
+
+	return lastErr
+}
+
+func (s *Scheduler) processInstruction(ctx context.Context, instruction instructiondomain.Instruction) error {
+	tx, err := s.instructionRepo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback(ctx)
+			panic(p)
+		}
+	}()
+
+	task, err := s.taskRepo.GetByID(ctx, instruction.TaskID)
+	if err != nil {
+		tx.Rollback(ctx)
+		return err
+	}
+
+	nextTaskDate := CalculateNextDate(task.Deadline, instruction.Scenario, instruction.ScenarioValue)
+
+	now := s.now()
+	task.Deadline = nextTaskDate
+	task.Status = taskdomain.StatusNew
+	task.CreatedAt = now
+	task.UpdatedAt = now
+
+	newTask, err := s.taskRepo.Create(ctx, tx, task)
+	if err != nil {
+		tx.Rollback(ctx)
+		return err
+	}
+
+	instruction.NextTaskDate = newTask.Deadline
+	instruction.TaskID = newTask.ID
+	instruction.UpdatedAt = now
+
+	_, err = s.instructionRepo.Update(ctx, tx, &instruction)
+	if err != nil {
+		tx.Rollback(ctx)
+		return err
+	}
+
+	return tx.Commit(ctx)
+
 }

@@ -36,6 +36,12 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*taskdomain.Ta
 		return nil, err
 	}
 
+	tx, err := s.repo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
 	model := &taskdomain.Task{
 		Title:       normalized.Title,
 		Description: normalized.Description,
@@ -46,18 +52,18 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*taskdomain.Ta
 	model.CreatedAt = now
 	model.UpdatedAt = now
 
-	created, err := s.repo.Create(ctx, model)
+	created, err := s.repo.Create(ctx, tx, model)
 	if err != nil {
 		return nil, err
 	}
 
 	if normalized.Scenario != instructiondomain.ScenarioZero && normalized.Scenario != instructiondomain.ScenarioSpecificDates {
-		nextTaskDate := scheduler.CalculateNextDate(normalized.Deadline, normalized.Scenario, normalized.ScenarioValue)
+		nextTaskDate := customscheduler.CalculateNextDate(normalized.Deadline, normalized.Scenario, normalized.ScenarioValue)
 
 		model.Deadline = nextTaskDate
 		model.Status = taskdomain.StatusNew
 
-		nextTask, err := s.repo.Create(ctx, model)
+		nextTask, err := s.repo.Create(ctx, tx, model)
 		if err != nil {
 			return nil, err
 		}
@@ -65,25 +71,29 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*taskdomain.Ta
 		instructionModel := &instructiondomain.Instruction{
 			Scenario:      normalized.Scenario,
 			ScenarioValue: normalized.ScenarioValue,
-			NextTaskDate:  nextTaskDate,
+			NextTaskDate:  nextTask.Deadline,
 			CreatedAt:     now,
 			UpdatedAt:     now,
 			TaskID:        nextTask.ID,
 		}
 
-		_, err = s.instructionRepo.Create(ctx, instructionModel)
+		_, err = s.instructionRepo.Create(ctx, tx, instructionModel)
 		if err != nil {
 			return nil, err
 		}
 	} else if normalized.Scenario == instructiondomain.ScenarioSpecificDates {
-		for _, d := range input.SpecificDates {
-			model.Deadline = d
+		for _, date := range input.SpecificDates {
+			model.Deadline = date
 			model.Status = taskdomain.StatusNew
-			_, err := s.repo.Create(ctx, model)
+			_, err := s.repo.Create(ctx, tx, model)
 			if err != nil {
 				return nil, err
 			}
 		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
 	}
 
 	return created, nil
