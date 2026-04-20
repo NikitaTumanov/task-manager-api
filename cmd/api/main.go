@@ -12,10 +12,13 @@ import (
 
 	infrastructurepostgres "example.com/taskservice/internal/infrastructure/postgres"
 	postgresrepo "example.com/taskservice/internal/repository/postgres"
+	customscheduler "example.com/taskservice/internal/scheduler"
 	transporthttp "example.com/taskservice/internal/transport/http"
 	swaggerdocs "example.com/taskservice/internal/transport/http/docs"
 	httphandlers "example.com/taskservice/internal/transport/http/handlers"
+	"example.com/taskservice/internal/usecase/instruction"
 	"example.com/taskservice/internal/usecase/task"
+	"github.com/robfig/cron/v3"
 )
 
 func main() {
@@ -36,10 +39,32 @@ func main() {
 	defer pool.Close()
 
 	taskRepo := postgresrepo.New(pool)
-	taskUsecase := task.NewService(taskRepo)
+	instructionRepo := postgresrepo.NewInstructionRepository(pool)
+
+	taskUsecase := task.NewService(taskRepo, instructionRepo)
+	instructionUsecase := instruction.NewService(instructionRepo, taskRepo)
+
 	taskHandler := httphandlers.NewTaskHandler(taskUsecase)
+	instructionHandler := httphandlers.NewInstructionHandler(instructionUsecase)
 	docsHandler := swaggerdocs.NewHandler()
-	router := transporthttp.NewRouter(taskHandler, docsHandler)
+
+	router := transporthttp.NewRouter(taskHandler, instructionHandler, docsHandler)
+
+	scheduler := customscheduler.NewScheduler(taskRepo, instructionRepo)
+	c := cron.New(cron.WithLocation(time.Local))
+
+	_, err = c.AddFunc("0 10 * * *", func() {
+		schedCTX := context.Background()
+		if runErr := scheduler.Run(schedCTX); runErr != nil {
+			logger.Error("scheduler error: %v", runErr)
+		} else {
+			logger.Info("Scheduler completed successfully")
+		}
+	})
+	if err != nil {
+		logger.Error("scheduler error: %v", err)
+	}
+	c.Start()
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,

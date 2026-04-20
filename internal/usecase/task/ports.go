@@ -2,16 +2,26 @@ package task
 
 import (
 	"context"
+	"time"
 
+	instructiondomain "example.com/taskservice/internal/domain/instruction"
 	taskdomain "example.com/taskservice/internal/domain/task"
+	"github.com/jackc/pgx/v5"
 )
 
 type Repository interface {
-	Create(ctx context.Context, task *taskdomain.Task) (*taskdomain.Task, error)
+	BeginTx(ctx context.Context) (pgx.Tx, error)
+	Create(ctx context.Context, tx pgx.Tx, task *taskdomain.Task) (*taskdomain.Task, error)
 	GetByID(ctx context.Context, id int64) (*taskdomain.Task, error)
-	Update(ctx context.Context, task *taskdomain.Task) (*taskdomain.Task, error)
+	Update(ctx context.Context, tx pgx.Tx, task *taskdomain.Task) (*taskdomain.Task, error)
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context) ([]taskdomain.Task, error)
+}
+
+type InstructionRepository interface {
+	Create(ctx context.Context, tx pgx.Tx, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error)
+	Update(ctx context.Context, tx pgx.Tx, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error)
+	GetByTaskID(ctx context.Context, id int64) (*instructiondomain.Instruction, error)
 }
 
 type Usecase interface {
@@ -23,13 +33,18 @@ type Usecase interface {
 }
 
 type CreateInput struct {
-	Title       string
-	Description string
-	Status      taskdomain.Status
+	Title         string
+	Description   string
+	Status        taskdomain.Status
+	Deadline      time.Time
+	Scenario      instructiondomain.Scenario
+	ScenarioValue int
+	SpecificDates []time.Time
 }
 
 type UpdateInput struct {
 	Title       string
 	Description string
 	Status      taskdomain.Status
+	Deadline    time.Time
 }

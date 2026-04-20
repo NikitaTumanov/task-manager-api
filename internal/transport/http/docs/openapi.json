@@ -14,6 +14,10 @@
     {
       "name": "Tasks",
       "description": "Operations with tasks"
+    },
+    {
+      "name": "Instructions",
+      "description": "Operations with instructions"
     }
   ],
   "paths": {
@@ -131,6 +135,146 @@
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
+    },
+    "/api/v1/instructions": {
+      "get": {
+        "tags": ["Instructions"],
+        "summary": "List instructions",
+        "responses": {
+          "200": {
+            "description": "Instruction list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Instruction" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Instructions"],
+        "summary": "Create instruction",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateInstructionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created instruction",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Instruction" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/api/v1/instructions/{id}": {
+      "get": {
+        "tags": ["Instructions"],
+        "summary": "Get instruction by ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instruction",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Instruction" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "put": {
+        "tags": ["Instructions"],
+        "summary": "Update instruction",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateInstructionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated instruction",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Instruction" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Instructions"],
+        "summary": "Delete instruction",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/instructions/task/{id}": {
+      "get": {
+        "tags": ["Instructions"],
+        "summary": "Get instruction by Task ID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instruction",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Instruction" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
     }
   },
   "components": {
@@ -155,7 +299,7 @@
     "schemas": {
       "CreateTaskRequest": {
         "type": "object",
-        "required": ["title"],
+        "required": ["title", "deadline"],
         "properties": {
           "title": {
             "type": "string",
@@ -169,6 +313,32 @@
             "type": "string",
             "enum": ["new", "in_progress", "done"],
             "example": "new"
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-24T00:00:00Z"
+          },
+          "scenario": {
+            "type": "string",
+            "enum": ["daily", "monthly", "specific_dates", "even", "odd"],
+            "example": "daily"
+          },
+          "scenario_value": {
+            "type": "integer",
+            "format": "int",
+            "example": 1
+          },
+          "specific_dates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "example": [
+              "2026-03-24T00:00:00Z",
+              "2026-04-01T12:00:00Z"
+            ]
           }
         }
       },
@@ -188,6 +358,59 @@
             "type": "string",
             "enum": ["new", "in_progress", "done"],
             "example": "in_progress"
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-24T00:00:00Z"
+          }
+        }
+      },
+      "CreateInstructionRequest": {
+        "type": "object",
+        "required": ["scenario", "task_id"],
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "enum": ["daily", "monthly", "specific_dates", "even", "odd"],
+            "example": "daily"
+          },
+          "scenario_value": {
+            "type": "integer",
+            "format": "int",
+            "example": 1
+          },
+          "task_id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1
+          },
+          "specific_dates": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "example": [
+              "2026-03-24T00:00:00Z",
+              "2026-04-01T12:00:00Z"
+            ]
+          }
+        }
+      },
+      "UpdateInstructionRequest": {
+        "type": "object",
+        "required": ["scenario"],
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "enum": ["daily", "monthly", "even", "odd"],
+            "example": "daily"
+          },
+          "scenario_value": {
+            "type": "integer",
+            "format": "int",
+            "example": 1
           }
         }
       },
@@ -205,6 +428,11 @@
             "enum": ["new", "in_progress", "done"],
             "example": "new"
           },
+          "deadline": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-24T00:00:00Z"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -214,6 +442,46 @@
             "type": "string",
             "format": "date-time",
             "example": "2026-03-24T00:00:00Z"
+          }
+        }
+      },
+      "Instruction": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1
+          },
+          "scenario": {
+            "type": "string",
+            "enum": ["", "daily", "monthly", "specific_dates", "even", "odd"],
+            "example": "daily"
+          },
+          "scenario_value": {
+            "type": "integer",
+            "format": "int",
+            "example": 1
+          },
+          "next_task_date": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-24T00:00:00Z"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-24T00:00:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-24T00:00:00Z"
+          },
+          "task_id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1
           }
         }
       },
