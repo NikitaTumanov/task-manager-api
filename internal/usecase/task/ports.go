@@ -13,13 +13,15 @@ type Repository interface {
 	BeginTx(ctx context.Context) (pgx.Tx, error)
 	Create(ctx context.Context, tx pgx.Tx, task *taskdomain.Task) (*taskdomain.Task, error)
 	GetByID(ctx context.Context, id int64) (*taskdomain.Task, error)
-	Update(ctx context.Context, task *taskdomain.Task) (*taskdomain.Task, error)
+	Update(ctx context.Context, tx pgx.Tx, task *taskdomain.Task) (*taskdomain.Task, error)
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context) ([]taskdomain.Task, error)
 }
 
 type InstructionRepository interface {
 	Create(ctx context.Context, tx pgx.Tx, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error)
+	Update(ctx context.Context, tx pgx.Tx, instruction *instructiondomain.Instruction) (*instructiondomain.Instruction, error)
+	GetByTaskID(ctx context.Context, id int64) (*instructiondomain.Instruction, error)
 }
 
 type Usecase interface {

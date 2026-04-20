@@ -117,6 +117,12 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*tas
 		return nil, err
 	}
 
+	tx, err := s.repo.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
 	model := &taskdomain.Task{
 		ID:          id,
 		Title:       normalized.Title,
@@ -126,8 +132,24 @@ func (s *Service) Update(ctx context.Context, id int64, input UpdateInput) (*tas
 		UpdatedAt:   s.now(),
 	}
 
-	updated, err := s.repo.Update(ctx, model)
+	updated, err := s.repo.Update(ctx, tx, model)
 	if err != nil {
+		return nil, err
+	}
+
+	if !input.Deadline.IsZero() {
+		task, err := s.instructionRepo.GetByTaskID(ctx, updated.ID)
+		if err == nil {
+			task.NextTaskDate = updated.Deadline
+			task.UpdatedAt = updated.UpdatedAt
+			_, err = s.instructionRepo.Update(ctx, tx, task)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 

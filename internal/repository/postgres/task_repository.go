@@ -58,7 +58,7 @@ func (r *Repository) GetByID(ctx context.Context, id int64) (*taskdomain.Task, e
 	return found, nil
 }
 
-func (r *Repository) Update(ctx context.Context, task *taskdomain.Task) (*taskdomain.Task, error) {
+func (r *Repository) Update(ctx context.Context, tx pgx.Tx, task *taskdomain.Task) (*taskdomain.Task, error) {
 	var row pgx.Row
 	if task.Deadline.IsZero() {
 		const query = `
@@ -70,7 +70,7 @@ func (r *Repository) Update(ctx context.Context, task *taskdomain.Task) (*taskdo
 		WHERE id = $5
 		RETURNING id, title, description, status, deadline, created_at, updated_at
 	`
-		row = r.pool.QueryRow(ctx, query, task.Title, task.Description, task.Status, task.UpdatedAt, task.ID)
+		row = tx.QueryRow(ctx, query, task.Title, task.Description, task.Status, task.UpdatedAt, task.ID)
 	} else {
 		const query = `
 		UPDATE tasks
@@ -82,7 +82,7 @@ func (r *Repository) Update(ctx context.Context, task *taskdomain.Task) (*taskdo
 		WHERE id = $6
 		RETURNING id, title, description, status, deadline, created_at, updated_at
 	`
-		row = r.pool.QueryRow(ctx, query, task.Title, task.Description, task.Status, task.Deadline, task.UpdatedAt, task.ID)
+		row = tx.QueryRow(ctx, query, task.Title, task.Description, task.Status, task.Deadline, task.UpdatedAt, task.ID)
 	}
 
 	updated, err := scanTask(row)
